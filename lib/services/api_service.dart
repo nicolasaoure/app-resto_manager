@@ -7,14 +7,8 @@ import 'package:image_picker/image_picker.dart';
 String? utilisateurConnecteId; // Va stocker ton UUID
 
 String getApiBaseUrl() {
-  if (kIsWeb) {
-    // On utilise l'adresse IP explicite au lieu de localhost
-    return 'http://127.0.0.1:3000';
-  }
-  if (Platform.isAndroid) {
-    return 'http://10.0.2.2:3000';
-  }
-  return 'http://127.0.0.1:3000';
+  // FINI LE LOCAL ! On pointe maintenant vers le serveur de production sur Render
+  return 'https://api-resto-manager.onrender.com';
 }
 
 Future<List<dynamic>> fetchTransactions() async {
@@ -39,7 +33,6 @@ Future<List<dynamic>> fetchTransactions() async {
 }
 
 // La fonction pour demander la connexion au serveur
-// La fonction pour demander la connexion au serveur
 Future<Map<String, dynamic>> login(String username, String password) async {
   final baseUrl = getApiBaseUrl();
   final url = Uri.parse('$baseUrl/auth/login');
@@ -60,7 +53,6 @@ Future<Map<String, dynamic>> login(String username, String password) async {
     );
   }
 
-  // 2. On analyse la réponse (en dehors du catch !)
   // 2. On analyse la réponse (en dehors du catch !)
   if (response.statusCode == 200) {
     final donnees = json.decode(response.body);
