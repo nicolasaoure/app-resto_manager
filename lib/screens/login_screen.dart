@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // <-- NOUVEAU
 import '../services/api_service.dart';
 import '../main.dart'; // Permet d'accéder à l'EcranTransactions pour la redirection
 
@@ -26,17 +27,22 @@ class _EcranConnexionState extends State<EcranConnexion> {
       return;
     }
 
-    // On lance la roue de chargement
     setState(() {
       _enChargement = true;
     });
 
     try {
-      // On appelle notre API NestJS
+      // On appelle notre API NestJS (qui renvoie désormais le rôle)
       final resultat = await login(nom, motDePasse);
 
-      // Si on arrive ici, c'est que le serveur a répondu 200 OK !
       if (mounted) {
+        // --- NOUVEAU : Sauvegarde de la session (Top Chrono 8h) ---
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userId', resultat['userId'].toString());
+        await prefs.setString('role', resultat['role']);
+        await prefs.setString('login_time', DateTime.now().toIso8601String());
+        // --------------------------------------------------------
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(resultat['message']),
@@ -44,14 +50,25 @@ class _EcranConnexionState extends State<EcranConnexion> {
           ),
         );
 
-        // On détruit l'écran de connexion et on affiche le tableau de bord (Transactions)
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const EcranTransactions()),
-        );
+        // --- NOUVEAU : Aiguillage Intelligent (Corrigé) ---
+        if (resultat['role'] == 'ADMIN') {
+          // L'Admin va vers le Menu Principal (qui s'ouvrira sur l'onglet 1 : Stats)
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const MenuPrincipal(indexInitial: 1),
+            ),
+          );
+        } else {
+          // Le serveur standard va vers la caisse (Transactions)
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const EcranTransactions()),
+          );
+        }
+        // ----------------------------------------
       }
     } catch (e) {
-      // En cas de mauvais mot de passe ou d'erreur
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -61,11 +78,11 @@ class _EcranConnexionState extends State<EcranConnexion> {
         );
       }
     } finally {
-      // On arrête la roue de chargement quoi qu'il arrive
-      if (mounted)
+      if (mounted) {
         setState(() {
           _enChargement = false;
         });
+      }
     }
   }
 

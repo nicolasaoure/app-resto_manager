@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart'; // <-- NOUVEAU
 import 'screens/login_screen.dart';
 import 'screens/add_transaction_screen.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +7,7 @@ import 'screens/view_receipt_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/add_stock_screen.dart';
 import 'screens/inventory_screen.dart';
-import 'screens/sell_item_screen.dart'; // Import bien présent
+import 'screens/sell_item_screen.dart';
 import 'package:intl/intl.dart';
 
 String formaterPrix(dynamic prix) {
@@ -14,12 +15,51 @@ String formaterPrix(dynamic prix) {
   return NumberFormat('#,##0').format(valeur).replaceAll(',', ' ');
 }
 
-void main() {
-  runApp(const ApplicationAkwaba());
+// --- 1. LE NOUVEAU POINT D'ENTRÉE ---
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // On fait appel à notre "videur" avant d'afficher quoi que ce soit
+  Widget pageInitiale = await _determinerPageInitiale();
+
+  runApp(ApplicationAkwaba(pageInitiale: pageInitiale));
+}
+
+// --- 2. LE VIDEUR ET L'AIGUILLEUR ---
+Future<Widget> _determinerPageInitiale() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('userId');
+  final role = prefs.getString('role');
+  final loginTimeStr = prefs.getString('login_time');
+
+  // Si une info manque, direction connexion
+  if (userId == null || role == null || loginTimeStr == null) {
+    return const EcranConnexion();
+  }
+
+  // Vérification du chronomètre de 8 heures
+  final loginTime = DateTime.parse(loginTimeStr);
+  final heuresEcoulees = DateTime.now().difference(loginTime).inHours;
+
+  if (heuresEcoulees >= 8) {
+    await prefs.clear(); // On détruit la vieille session
+    return const EcranConnexion();
+  }
+
+  // Aiguillage selon le profil
+  if (role == 'ADMIN') {
+    // L'admin a le menu complet, on l'ouvre sur l'onglet 1 (Stats)
+    return const MenuPrincipal(indexInitial: 1);
+  } else {
+    // Le standard va direct en caisse (sans menu inférieur)
+    return const EcranTransactions();
+  }
 }
 
 class ApplicationAkwaba extends StatelessWidget {
-  const ApplicationAkwaba({super.key});
+  final Widget pageInitiale;
+
+  const ApplicationAkwaba({super.key, required this.pageInitiale});
 
   @override
   Widget build(BuildContext context) {
@@ -30,26 +70,38 @@ class ApplicationAkwaba extends StatelessWidget {
         primarySwatch: Colors.orange,
         scaffoldBackgroundColor: Colors.grey[100],
       ),
-      home: const MenuPrincipal(),
+      home: pageInitiale, // L'application démarre sur la page calculée
     );
   }
 }
 
+// --- 3. MODIFICATION DU MENU POUR CIBLER LES STATS ---
 class MenuPrincipal extends StatefulWidget {
-  const MenuPrincipal({super.key});
+  final int indexInitial;
+  // Par défaut l'index est 0, mais on peut forcer 1 pour les Stats
+  const MenuPrincipal({super.key, this.indexInitial = 0});
 
   @override
   State<MenuPrincipal> createState() => _MenuPrincipalState();
 }
 
 class _MenuPrincipalState extends State<MenuPrincipal> {
-  int _indexSelectionne = 0;
+  late int _indexSelectionne;
+
+  @override
+  void initState() {
+    super.initState();
+    // On initialise le menu sur l'onglet demandé au démarrage
+    _indexSelectionne = widget.indexInitial;
+  }
 
   final List<Widget> _ecrans = [
     const EcranTransactions(),
-    const EcranTableauDeBord(),
+    const EcranTableauDeBord(), // Index 1 : Stats
     const EcranInventaire(),
   ];
+
+  // ... (LE RESTE DE TON CODE RESTE EXACTEMENT IDENTIQUE À PARTIR D'ICI) ...
 
   @override
   Widget build(BuildContext context) {
@@ -323,11 +375,20 @@ class _EcranTransactionsState extends State<EcranTransactions> {
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Se déconnecter',
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const EcranConnexion()),
-              );
+            onPressed: () async {
+              // 1. On détruit la session dans la mémoire du téléphone
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+
+              // 2. On renvoie vers l'écran de connexion
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EcranConnexion(),
+                  ),
+                );
+              }
             },
           ),
         ],

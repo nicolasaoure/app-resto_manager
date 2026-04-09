@@ -54,7 +54,8 @@ Future<Map<String, dynamic>> login(String username, String password) async {
   }
 
   // 2. On analyse la réponse (en dehors du catch !)
-  if (response.statusCode == 200) {
+  // ---> C'EST ICI QUE NOUS ACCEPTONS LE CODE 201 <---
+  if (response.statusCode == 200 || response.statusCode == 201) {
     final donnees = json.decode(response.body);
     utilisateurConnecteId = donnees['userId']; // <-- ON SAUVEGARDE L'ID ICI !
     return donnees;
@@ -171,5 +172,52 @@ Future<void> modifierTransaction(
     throw Exception(
       'Erreur lors de la modification : ${response.statusCode}\n${response.body}',
     );
+  }
+}
+
+// NOUVEAU : Récupérer la liste complète du stock (avec les prix)
+Future<List<dynamic>> fetchStock() async {
+  final baseUrl = getApiBaseUrl();
+  final url = Uri.parse('$baseUrl/stock');
+
+  final response = await http.get(url);
+
+  if (response.statusCode == 200) {
+    return json.decode(response.body);
+  } else {
+    throw Exception(
+      'Erreur lors du chargement du stock : ${response.statusCode}',
+    );
+  }
+}
+
+// NOUVEAU : Enregistrer une vente avec le bon utilisateur
+Future<void> vendreProduit(
+  String nomProduit,
+  int quantite,
+  double prixTotal,
+  String categorie,
+) async {
+  if (utilisateurConnecteId == null) {
+    throw Exception("Erreur : Aucun utilisateur connecté !");
+  }
+
+  final baseUrl = getApiBaseUrl();
+  final url = Uri.parse('$baseUrl/stock/sell-item');
+
+  final response = await http.post(
+    url,
+    headers: {'Content-Type': 'application/json'},
+    body: json.encode({
+      'nom': nomProduit,
+      'quantiteVendue': quantite,
+      'prixTotal': prixTotal,
+      'categorie': categorie,
+      'userId': utilisateurConnecteId, // On utilise l'ID du serveur connecté !
+    }),
+  );
+
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    throw Exception('Erreur lors de la vente : ${response.body}');
   }
 }
