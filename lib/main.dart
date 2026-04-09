@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'services/api_service.dart';
 import 'screens/view_receipt_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/add_stock_screen.dart';
+import 'screens/inventory_screen.dart';
+import 'screens/sell_item_screen.dart'; // Import bien présent
 import 'package:intl/intl.dart';
 
 String formaterPrix(dynamic prix) {
@@ -27,7 +30,6 @@ class ApplicationAkwaba extends StatelessWidget {
         primarySwatch: Colors.orange,
         scaffoldBackgroundColor: Colors.grey[100],
       ),
-      // C'EST CECI QUI AVAIT SAUTÉ : Le MenuPrincipal !
       home: const MenuPrincipal(),
     );
   }
@@ -46,6 +48,7 @@ class _MenuPrincipalState extends State<MenuPrincipal> {
   final List<Widget> _ecrans = [
     const EcranTransactions(),
     const EcranTableauDeBord(),
+    const EcranInventaire(),
   ];
 
   @override
@@ -66,6 +69,10 @@ class _MenuPrincipalState extends State<MenuPrincipal> {
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart),
             label: 'Statistiques',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory),
+            label: 'Inventaire',
           ),
         ],
       ),
@@ -497,18 +504,121 @@ class _EcranTransactionsState extends State<EcranTransactions> {
           );
         },
       ),
+
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange[800],
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const EcranAjoutTransaction(),
-            ),
-          );
-          _rafraichirLaListe();
-        },
+        tooltip: 'Ajouter...',
         child: const Icon(Icons.add, color: Colors.white, size: 30),
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (BuildContext ctx) {
+              return SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 15.0),
+                        child: Text(
+                          'Que voulez-vous ajouter ?',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      // OPTION 1 : LA FINANCE
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.blue[100],
+                          child: const Icon(
+                            Icons.account_balance_wallet,
+                            color: Colors.blue,
+                          ),
+                        ),
+                        title: const Text(
+                          'Transaction Financière',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: const Text(
+                          'Nouvelle recette ou dépense simple',
+                        ),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const EcranAjoutTransaction(),
+                            ),
+                          );
+                          _rafraichirLaListe();
+                        },
+                      ),
+                      const Divider(),
+                      // OPTION 2 : VENDRE (NOUVEAU)
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.orange[100],
+                          child: const Icon(
+                            Icons.point_of_sale,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        title: const Text(
+                          'Vendre un produit',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: const Text('Encaisser et déduire du stock'),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SellItemScreen(),
+                            ),
+                          );
+                          _rafraichirLaListe();
+                        },
+                      ),
+                      const Divider(),
+                      // OPTION 3 : LE STOCK
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.green[100],
+                          child: const Icon(
+                            Icons.inventory_2,
+                            color: Colors.green,
+                          ),
+                        ),
+                        title: const Text(
+                          'Arrivage de Stock',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: const Text('Enregistrer des marchandises'),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AddStockScreen(),
+                            ),
+                          );
+                          _rafraichirLaListe();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
