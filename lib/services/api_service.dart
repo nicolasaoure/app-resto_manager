@@ -221,3 +221,16 @@ Future<void> vendreProduit(
     throw Exception('Erreur lors de la vente : ${response.body}');
   }
 }
+
+Future<List<dynamic>> fetchLogs() async {
+  final url = Uri.parse(
+    '${getApiBaseUrl()}/logs',
+  ); // Assure-toi d'avoir cette route sur NestJS
+  final response = await http.get(url);
+
+  if (response.statusCode == 200) {
+    return json.decode(response.body);
+  } else {
+    throw Exception('Erreur lors du chargement des logs');
+  }
+}

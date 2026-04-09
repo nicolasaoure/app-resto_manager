@@ -171,9 +171,10 @@ class _SellItemScreenState extends State<SellItemScreen> {
                       },
                       onSelected: (Map<String, dynamic> selection) {
                         setState(() {
-                          _produitSelectionne = selection
+                          _produitSelectionne = selection;
                           // NOUVEAU : On récupère la vraie catégorie du produit !
-                          _categorie = selection['categorie'] ?? 'RECETTE_BOISSON';
+                          _categorie =
+                              selection['categorie'] ?? 'RECETTE_BOISSON';
                         });
                         _calculerPrixTotal(); // On déclenche le calcul au clic !
                       },

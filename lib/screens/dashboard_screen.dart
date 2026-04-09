@@ -15,80 +15,125 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   DateTime _moisAffiche = DateTime.now();
   bool _generationEnCours = false;
 
-  String formaterPrix(double prix) {
-    return NumberFormat('#,##0').format(prix).replaceAll(',', ' ');
-  }
+  // --- LOGIQUE DES LOGS (Traçabilité) ---
+  Widget _buildLogsSection() {
+    return FutureBuilder<List<dynamic>>(
+      future: fetchLogs(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting)
+          return const SizedBox();
 
-  String _nomDuMois(int mois) {
-    const moisNoms = [
-      'janvier',
-      'février',
-      'mars',
-      'avril',
-      'mai',
-      'juin',
-      'juillet',
-      'août',
-      'septembre',
-      'octobre',
-      'novembre',
-      'décembre',
-    ];
-    return moisNoms[mois - 1];
-  }
-
-  void _moisPrecedent() {
-    setState(
-      () => _moisAffiche = DateTime(_moisAffiche.year, _moisAffiche.month - 1),
-    );
-  }
-
-  void _moisSuivant() {
-    setState(
-      () => _moisAffiche = DateTime(_moisAffiche.year, _moisAffiche.month + 1),
-    );
-  }
-
-  Widget _buildSummaryCard(
-    String titre,
-    double montant,
-    Color couleur,
-    IconData icone,
-  ) {
-    return Expanded(
-      child: Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        child: Padding(
-          padding: const EdgeInsets.all(15.0),
-          child: Column(
-            children: [
-              Icon(icone, color: couleur, size: 30),
-              const SizedBox(height: 10),
-              Text(
-                titre,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                "Aucune activité récente pour le moment.",
+                style: TextStyle(color: Colors.grey),
               ),
-              const SizedBox(height: 5),
-              Text(
-                "${formaterPrix(montant)} FCFA",
+            ),
+          );
+        }
+
+        final logs = snapshot.data!.take(5).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                "Flux d'activité récent",
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: couleur,
+                  color: Colors.black87,
                 ),
-                textAlign: TextAlign.center,
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  const BoxShadow(color: Colors.black12, blurRadius: 5),
+                ],
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: logs.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final log = logs[index];
+                  // CORRECTION ICI : Utilisation de 'log' au lieu de 'tx'
+                  DateTime dateLog = log['createdAt'] != null
+                      ? DateTime.parse(log['createdAt'])
+                      : DateTime.now();
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: _getLogColor(log['action']),
+                      child: Icon(
+                        _getLogIcon(log['action']),
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      log['action'],
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: Text(
+                      "Par ${log['user']?['username'] ?? 'Système'} • ${DateFormat('HH:mm').format(dateLog)}",
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  IconData _getLogIcon(String action) {
+    if (action.contains('Suppression') || action.contains('Delete'))
+      return Icons.delete_forever;
+    if (action.contains('Connexion') || action.contains('Login'))
+      return Icons.login;
+    if (action.contains('Vente')) return Icons.shopping_cart;
+    return Icons.info_outline;
+  }
+
+  Color _getLogColor(String action) {
+    if (action.contains('Suppression') || action.contains('Delete'))
+      return Colors.red;
+    if (action.contains('Connexion') || action.contains('Login'))
+      return Colors.blue;
+    if (action.contains('Vente')) return Colors.green;
+    return Colors.grey;
+  }
+
+  String formaterPrix(double prix) =>
+      NumberFormat('#,##0').format(prix).replaceAll(',', ' ');
+  String _nomDuMois(int m) => [
+    'janvier',
+    'février',
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    'août',
+    'septembre',
+    'octobre',
+    'novembre',
+    'décembre',
+  ][m - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -105,97 +150,39 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError)
-            return Center(child: Text('Erreur: ${snapshot.error}'));
-          if (!snapshot.hasData || snapshot.data!.isEmpty)
-            return const Center(child: Text('Aucune donnée trouvée.'));
 
-          final transactions = snapshot.data!;
-          final moisFiltre = _moisAffiche.month;
-          final anneeFiltre = _moisAffiche.year;
-
-          double recettesMois = 0;
-          double depensesMois = 0;
-          double depensesNourriture = 0;
-          double depensesBoisson = 0;
-          double depensesAutre = 0;
+          final transactions = snapshot.data ?? [];
+          double recettesMois = 0, depensesMois = 0;
+          double depNourriture = 0, depBoisson = 0, depAutre = 0;
 
           for (var tx in transactions) {
             DateTime date = tx['createdAt'] != null
                 ? DateTime.parse(tx['createdAt'])
                 : DateTime.now();
-
-            if (date.month == moisFiltre && date.year == anneeFiltre) {
+            if (date.month == _moisAffiche.month &&
+                date.year == _moisAffiche.year) {
               double montant = (tx['amount'] ?? 0).toDouble();
-              bool isEntree =
-                  tx['type'] == 'ENTREE' ||
-                  (tx['category'] ?? '').toString().startsWith('RECETTE');
               String cat = tx['category'] ?? '';
 
-              if (isEntree) {
+              if (tx['type'] == 'ENTREE' || cat.startsWith('RECETTE')) {
                 recettesMois += montant;
               } else {
                 depensesMois += montant;
-                if (cat.contains('NOURRITURE') ||
-                    cat.contains('MARCHANDISE') ||
-                    cat.contains('PRODUIT')) {
-                  depensesNourriture += montant;
-                } else if (cat.contains('BOISSON')) {
-                  depensesBoisson += montant;
-                } else {
-                  depensesAutre += montant;
-                }
+                if (cat.contains('NOURRITURE'))
+                  depNourriture += montant;
+                else if (cat.contains('BOISSON'))
+                  depBoisson += montant;
+                else
+                  depAutre += montant;
               }
             }
           }
 
-          double balanceMois = recettesMois - depensesMois;
-          String labelMoisAffiche =
-              "${_nomDuMois(_moisAffiche.month)} ${_moisAffiche.year}";
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(15.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 10,
-                    horizontal: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_ios,
-                          color: Colors.orange,
-                        ),
-                        onPressed: _moisPrecedent,
-                      ),
-                      Text(
-                        "Résumé de $labelMoisAffiche",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange[900],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_forward_ios,
-                          color: Colors.orange,
-                        ),
-                        onPressed: _moisSuivant,
-                      ),
-                    ],
-                  ),
-                ),
-
+                _buildMonthSelector(),
                 const SizedBox(height: 20),
 
                 Row(
@@ -216,163 +203,43 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                     const SizedBox(width: 10),
                     _buildSummaryCard(
                       "BÉNÉFICE",
-                      balanceMois,
-                      balanceMois >= 0 ? Colors.blue : Colors.orange,
+                      recettesMois - depensesMois,
+                      Colors.blue,
                       Icons.account_balance_wallet,
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 40),
-                Text(
-                  "Répartition des dépenses",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange[900],
-                  ),
+                const SizedBox(height: 30),
+                const Text(
+                  "Répartition des charges",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 20),
-
-                if (depensesMois > 0)
-                  SizedBox(
-                    height: 250,
-                    child: PieChart(
-                      PieChartData(
-                        sectionsSpace: 2,
-                        centerSpaceRadius: 40,
-                        sections: [
-                          if (depensesNourriture > 0)
-                            PieChartSectionData(
-                              color: Colors.brown,
-                              value: depensesNourriture,
-                              title:
-                                  '${((depensesNourriture / depensesMois) * 100).toInt()}%',
-                              radius: 60,
-                              titleStyle: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          if (depensesBoisson > 0)
-                            PieChartSectionData(
-                              color: Colors.blue,
-                              value: depensesBoisson,
-                              title:
-                                  '${((depensesBoisson / depensesMois) * 100).toInt()}%',
-                              radius: 60,
-                              titleStyle: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          if (depensesAutre > 0)
-                            PieChartSectionData(
-                              color: Colors.grey,
-                              value: depensesAutre,
-                              title:
-                                  '${((depensesAutre / depensesMois) * 100).toInt()}%',
-                              radius: 60,
-                              titleStyle: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Text(
-                        "Aucune dépense enregistrée en $labelMoisAffiche.",
-                        style: const TextStyle(
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey,
+                const SizedBox(height: 10),
+                depensesMois > 0
+                    ? _buildPieChart(
+                        depensesMois,
+                        depNourriture,
+                        depBoisson,
+                        depAutre,
+                      )
+                    : const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Text("Aucune donnée de dépense."),
                         ),
                       ),
-                    ),
-                  ),
 
-                const SizedBox(height: 20),
-
-                if (depensesMois > 0)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildLegendItem(Colors.brown, "Nourriture"),
-                      const SizedBox(width: 15),
-                      _buildLegendItem(Colors.blue, "Boissons"),
-                      const SizedBox(width: 15),
-                      _buildLegendItem(Colors.grey, "Autre"),
-                    ],
-                  ),
-
-                const SizedBox(height: 40),
-
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onPressed: _generationEnCours
-                      ? null
-                      : () async {
-                          setState(() => _generationEnCours = true);
-                          try {
-                            await genererEtImprimerRapport(
-                              moisAnnee: labelMoisAffiche.toUpperCase(),
-                              entrees: recettesMois,
-                              sorties: depensesMois,
-                              benefice: balanceMois,
-                              depensesNourriture: depensesNourriture,
-                              // --- LA CORRECTION EST ICI (sans le 's' à la fin) ---
-                              depensesBoissons: depensesBoisson,
-                              depensesAutres: depensesAutre,
-                            );
-                          } catch (e) {
-                            if (mounted)
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Erreur PDF : $e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                          } finally {
-                            if (mounted)
-                              setState(() => _generationEnCours = false);
-                          }
-                        },
-                  icon: _generationEnCours
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.picture_as_pdf, color: Colors.white),
-                  label: Text(
-                    _generationEnCours
-                        ? 'Création en cours...'
-                        : 'EXPORTER LE RAPPORT DU MOIS',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+                const SizedBox(height: 30),
+                _buildExportButton(
+                  recettesMois,
+                  depensesMois,
+                  depNourriture,
+                  depBoisson,
+                  depAutre,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
+                _buildLogsSection(),
               ],
             ),
           );
@@ -381,23 +248,179 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     );
   }
 
-  Widget _buildLegendItem(Color color, String text) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          text,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
+  Widget _buildMonthSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.amber[100],
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed: () => setState(
+              () => _moisAffiche = DateTime(
+                _moisAffiche.year,
+                _moisAffiche.month - 1,
+              ),
+            ),
           ),
-        ),
-      ],
+          Text(
+            "${_nomDuMois(_moisAffiche.month)} ${_moisAffiche.year}",
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: () => setState(
+              () => _moisAffiche = DateTime(
+                _moisAffiche.year,
+                _moisAffiche.month + 1,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildSummaryCard(
+    String title,
+    double amount,
+    Color color,
+    IconData icon,
+  ) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                  ),
+                ),
+                Icon(icon, color: color, size: 14),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "${formaterPrix(amount)}",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPieChart(
+    double total,
+    double nourriture,
+    double boisson,
+    double autre,
+  ) {
+    return SizedBox(
+      height: 150,
+      child: PieChart(
+        PieChartData(
+          sectionsSpace: 2,
+          centerSpaceRadius: 30,
+          sections: [
+            PieChartSectionData(
+              color: Colors.brown,
+              value: nourriture,
+              title: '${(nourriture / total * 100).toInt()}%',
+              radius: 40,
+              titleStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            PieChartSectionData(
+              color: Colors.blue,
+              value: boisson,
+              title: '${(boisson / total * 100).toInt()}%',
+              radius: 40,
+              titleStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            PieChartSectionData(
+              color: Colors.grey,
+              value: autre,
+              title: '${(autre / total * 100).toInt()}%',
+              radius: 40,
+              titleStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExportButton(
+    double recettes,
+    double depenses,
+    double nourriture,
+    double boisson,
+    double autre,
+  ) {
+    return _generationEnCours
+        ? const CircularProgressIndicator()
+        : ElevatedButton.icon(
+            icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+            label: Text(
+              "EXPORTER LE RAPPORT DU MOIS",
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[800],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              minimumSize: const Size(double.infinity, 50),
+            ),
+            onPressed: () async {
+              setState(() => _generationEnCours = true);
+              try {
+                // CORRECTION ICI : Paramètres renommés pour correspondre à ton service
+                await genererEtImprimerRapport(
+                  moisAnnee:
+                      "${_nomDuMois(_moisAffiche.month)} ${_moisAffiche.year}"
+                          .toUpperCase(),
+                  entrees: recettes,
+                  sorties: depenses,
+                  benefice: recettes - depenses,
+                  depensesNourriture: nourriture,
+                  depensesBoissons: boisson,
+                  depensesAutres: autre,
+                );
+              } finally {
+                setState(() => _generationEnCours = false);
+              }
+            },
+          );
   }
 }
