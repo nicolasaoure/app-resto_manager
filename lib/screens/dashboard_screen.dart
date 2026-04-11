@@ -16,8 +16,12 @@ class EcranTableauDeBord extends StatefulWidget {
 class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   DateTime _moisAffiche = DateTime.now();
 
-  // --- FONCTION D'AFFICHAGE DU VOLET ---
+  bool _voletOuvert = false;
+
   void _afficherDetails(String titre, List<dynamic> transactionsFiltrees) {
+    if (_voletOuvert) return;
+    _voletOuvert = true;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -92,7 +96,9 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      _voletOuvert = false;
+    });
   }
 
   Widget _buildLogsSection() {
@@ -214,6 +220,33 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
             return const Center(child: CircularProgressIndicator());
           final allTransactions = snapshot.data ?? [];
 
+          // --- NOUVEAU : Calcul de l'historique progressif ---
+          List<double> histRecettes = [];
+          List<double> histDepenses = [];
+
+          for (int i = 1; i <= _moisAffiche.month; i++) {
+            double mRec = 0;
+            double mDep = 0;
+            for (var tx in allTransactions) {
+              DateTime d = tx['createdAt'] != null
+                  ? DateTime.parse(tx['createdAt'])
+                  : DateTime.now();
+              if (d.year == _moisAffiche.year && d.month == i) {
+                double montant = (tx['amount'] ?? 0).toDouble();
+                String cat = (tx['category'] ?? '').toString().toUpperCase();
+                bool isEntree =
+                    tx['type'] == 'ENTREE' || cat.startsWith('RECETTE');
+                if (isEntree)
+                  mRec += montant;
+                else
+                  mDep += montant;
+              }
+            }
+            histRecettes.add(mRec);
+            histDepenses.add(mDep);
+          }
+
+          // Données du mois courant pour l'affichage classique
           List<dynamic> txMois = allTransactions.where((tx) {
             DateTime date = tx['createdAt'] != null
                 ? DateTime.parse(tx['createdAt'])
@@ -230,7 +263,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
           for (var tx in txMois) {
             double montant = (tx['amount'] ?? 0).toDouble();
             String cat = (tx['category'] ?? '').toString().toUpperCase();
-
             bool isEntree = tx['type'] == 'ENTREE' || cat.startsWith('RECETTE');
 
             if (isEntree) {
@@ -333,7 +365,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                               return c.contains('NOURRITURE');
                             if (cat == 'Boisson') return c.contains('BOISSON');
                             return !c.contains('NOURRITURE') &&
-                                !c.contains('BOISSON'); // C'est "Autre"
+                                !c.contains('BOISSON');
                           }).toList();
                           _afficherDetails("Ventes : $cat", filtre);
                         },
@@ -371,7 +403,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                               return c.contains('NOURRITURE');
                             if (cat == 'Boisson') return c.contains('BOISSON');
                             return !c.contains('NOURRITURE') &&
-                                !c.contains('BOISSON'); // C'est "Autre"
+                                !c.contains('BOISSON');
                           }).toList();
                           _afficherDetails("Dépenses : $cat", filtre);
                         },
@@ -382,6 +414,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                       ),
 
                 const SizedBox(height: 30),
+                // Appel du bouton export avec les historiques
                 _buildExportButton(
                   totalEntrees,
                   totalSorties,
@@ -391,6 +424,8 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   recNourriture,
                   recBoisson,
                   recAutre,
+                  histRecettes,
+                  histDepenses, // NOUVEAUX PARAMÈTRES
                 ),
                 const SizedBox(height: 10),
                 _buildLogsSection(),
@@ -494,7 +529,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     double autre,
     Function(String) onSegmentTap,
   ) {
-    // CORRECTION DU BUG D'INDEX : On prépare la liste avec certitude
     List<Map<String, dynamic>> data = [];
     if (nourriture > 0)
       data.add({
@@ -517,20 +551,14 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
               centerSpaceRadius: 35,
               pieTouchData: PieTouchData(
                 touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                  // CORRECTION DU VOLET MULTIPLE : On n'écoute que le moment où le doigt se relève
-                  if (event is! FlTapUpEvent) return;
                   if (!event.isInterestedForInteractions ||
                       pieTouchResponse == null ||
                       pieTouchResponse.touchedSection == null)
                     return;
-
                   final index =
                       pieTouchResponse.touchedSection!.touchedSectionIndex;
-                  if (index >= 0 && index < data.length) {
-                    onSegmentTap(
-                      data[index]['label'],
-                    ); // On passe la bonne catégorie !
-                  }
+                  if (index >= 0 && index < data.length)
+                    onSegmentTap(data[index]['label']);
                 },
               ),
               sections: data.map((d) {
@@ -538,7 +566,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                 return PieChartSectionData(
                   color: d['color'],
                   value: val,
-                  // CORRECTION DES MONTANTS : On remet le texte sur deux lignes
                   title:
                       '${formaterPrix(val)}\n(${(val / total * 100).toInt()}%)',
                   radius: 55,
@@ -593,6 +620,8 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     double rn,
     double rb,
     double ra,
+    List<double> histRecettes,
+    List<double> histDepenses, // Réception des listes
   ) {
     return ElevatedButton.icon(
       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
@@ -618,6 +647,8 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
           recettesNourriture: rn,
           recettesBoissons: rb,
           recettesAutres: ra,
+          historiqueRecettes: histRecettes, // <-- Envoi au PDF
+          historiqueDepenses: histDepenses, // <-- Envoi au PDF
         );
         Navigator.push(
           context,
