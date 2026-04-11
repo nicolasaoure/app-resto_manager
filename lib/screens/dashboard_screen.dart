@@ -16,7 +16,7 @@ class EcranTableauDeBord extends StatefulWidget {
 class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   DateTime _moisAffiche = DateTime.now();
 
-  // --- NOUVEAU : Fonction pour afficher les détails dans un volet ---
+  // --- FONCTION D'AFFICHAGE DU VOLET ---
   void _afficherDetails(String titre, List<dynamic> transactionsFiltrees) {
     showModalBottomSheet(
       context: context,
@@ -76,9 +76,13 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                             "${formaterPrix(montant)} F",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: tx['type'] == 'ENTREE'
-                                  ? Colors.green
-                                  : Colors.red,
+                              color:
+                                  (tx['type'] == 'ENTREE' ||
+                                      (tx['category'] ?? '')
+                                          .toString()
+                                          .startsWith('RECETTE'))
+                                  ? Colors.green[700]
+                                  : Colors.red[700],
                             ),
                           ),
                         );
@@ -210,9 +214,10 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
             return const Center(child: CircularProgressIndicator());
           final allTransactions = snapshot.data ?? [];
 
-          // Filtrage initial pour le mois affiché
           List<dynamic> txMois = allTransactions.where((tx) {
-            DateTime date = DateTime.parse(tx['createdAt']);
+            DateTime date = tx['createdAt'] != null
+                ? DateTime.parse(tx['createdAt'])
+                : DateTime.now();
             return date.month == _moisAffiche.month &&
                 date.year == _moisAffiche.year &&
                 (tx['amount'] ?? 0) > 0;
@@ -224,8 +229,11 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
 
           for (var tx in txMois) {
             double montant = (tx['amount'] ?? 0).toDouble();
-            String cat = (tx['category'] ?? '').toString();
-            if (tx['type'] == 'ENTREE') {
+            String cat = (tx['category'] ?? '').toString().toUpperCase();
+
+            bool isEntree = tx['type'] == 'ENTREE' || cat.startsWith('RECETTE');
+
+            if (isEntree) {
               totalEntrees += montant;
               if (cat.contains('NOURRITURE'))
                 recNourriture += montant;
@@ -260,7 +268,13 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                       () {
                         _afficherDetails(
                           "Détail des Entrées",
-                          txMois.where((t) => t['type'] == 'ENTREE').toList(),
+                          txMois.where((t) {
+                            String c = (t['category'] ?? '')
+                                .toString()
+                                .toUpperCase();
+                            return t['type'] == 'ENTREE' ||
+                                c.startsWith('RECETTE');
+                          }).toList(),
                         );
                       },
                     ),
@@ -273,7 +287,13 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                       () {
                         _afficherDetails(
                           "Détail des Sorties",
-                          txMois.where((t) => t['type'] == 'SORTIE').toList(),
+                          txMois.where((t) {
+                            String c = (t['category'] ?? '')
+                                .toString()
+                                .toUpperCase();
+                            return t['type'] != 'ENTREE' &&
+                                !c.startsWith('RECETTE');
+                          }).toList(),
                         );
                       },
                     ),
@@ -288,6 +308,8 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   ],
                 ),
                 const SizedBox(height: 30),
+
+                // --- GRAPHIQUE DES RECETTES ---
                 const Text(
                   "Répartition des recettes (Entrées)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -300,27 +322,32 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                         recBoisson,
                         recAutre,
                         (cat) {
-                          _afficherDetails(
-                            "Ventes : $cat",
-                            txMois
-                                .where(
-                                  (t) =>
-                                      t['type'] == 'ENTREE' &&
-                                      t['category'].toString().contains(
-                                        cat.toUpperCase(),
-                                      ),
-                                )
-                                .toList(),
-                          );
+                          final filtre = txMois.where((t) {
+                            String c = (t['category'] ?? '')
+                                .toString()
+                                .toUpperCase();
+                            if (t['type'] != 'ENTREE' &&
+                                !c.startsWith('RECETTE'))
+                              return false;
+                            if (cat == 'Nourriture')
+                              return c.contains('NOURRITURE');
+                            if (cat == 'Boisson') return c.contains('BOISSON');
+                            return !c.contains('NOURRITURE') &&
+                                !c.contains('BOISSON'); // C'est "Autre"
+                          }).toList();
+                          _afficherDetails("Ventes : $cat", filtre);
                         },
                       )
                     : const Padding(
                         padding: EdgeInsets.all(20),
                         child: Text("Aucune recette"),
                       ),
+
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 20),
+
+                // --- GRAPHIQUE DES SORTIES ---
                 const Text(
                   "Répartition des charges (Sorties)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -333,24 +360,27 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                         depBoisson,
                         depAutre,
                         (cat) {
-                          _afficherDetails(
-                            "Dépenses : $cat",
-                            txMois
-                                .where(
-                                  (t) =>
-                                      t['type'] == 'SORTIE' &&
-                                      t['category'].toString().contains(
-                                        cat.toUpperCase(),
-                                      ),
-                                )
-                                .toList(),
-                          );
+                          final filtre = txMois.where((t) {
+                            String c = (t['category'] ?? '')
+                                .toString()
+                                .toUpperCase();
+                            if (t['type'] == 'ENTREE' ||
+                                c.startsWith('RECETTE'))
+                              return false;
+                            if (cat == 'Nourriture')
+                              return c.contains('NOURRITURE');
+                            if (cat == 'Boisson') return c.contains('BOISSON');
+                            return !c.contains('NOURRITURE') &&
+                                !c.contains('BOISSON'); // C'est "Autre"
+                          }).toList();
+                          _afficherDetails("Dépenses : $cat", filtre);
                         },
                       )
                     : const Padding(
                         padding: EdgeInsets.all(20),
                         child: Text("Aucune dépense"),
                       ),
+
                 const SizedBox(height: 30),
                 _buildExportButton(
                   totalEntrees,
@@ -417,7 +447,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   ) {
     return Expanded(
       child: InkWell(
-        // Ajout de l'effet de clic
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
@@ -465,6 +494,19 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     double autre,
     Function(String) onSegmentTap,
   ) {
+    // CORRECTION DU BUG D'INDEX : On prépare la liste avec certitude
+    List<Map<String, dynamic>> data = [];
+    if (nourriture > 0)
+      data.add({
+        'label': 'Nourriture',
+        'val': nourriture,
+        'color': Colors.brown,
+      });
+    if (boisson > 0)
+      data.add({'label': 'Boisson', 'val': boisson, 'color': Colors.blue});
+    if (autre > 0)
+      data.add({'label': 'Autre', 'val': autre, 'color': Colors.grey});
+
     return Column(
       children: [
         SizedBox(
@@ -474,60 +516,39 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
               sectionsSpace: 2,
               centerSpaceRadius: 35,
               pieTouchData: PieTouchData(
-                // --- GESTION DU CLIC SUR LE GRAPHIQUE ---
                 touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                  // CORRECTION DU VOLET MULTIPLE : On n'écoute que le moment où le doigt se relève
+                  if (event is! FlTapUpEvent) return;
                   if (!event.isInterestedForInteractions ||
                       pieTouchResponse == null ||
                       pieTouchResponse.touchedSection == null)
                     return;
+
                   final index =
                       pieTouchResponse.touchedSection!.touchedSectionIndex;
-                  if (index == 0)
-                    onSegmentTap('Nourriture');
-                  else if (index == 1)
-                    onSegmentTap('Boisson');
-                  else if (index == 2)
-                    onSegmentTap('Autre');
+                  if (index >= 0 && index < data.length) {
+                    onSegmentTap(
+                      data[index]['label'],
+                    ); // On passe la bonne catégorie !
+                  }
                 },
               ),
-              sections: [
-                if (nourriture > 0)
-                  PieChartSectionData(
-                    color: Colors.brown,
-                    value: nourriture,
-                    title: '${(nourriture / total * 100).toInt()}%',
-                    radius: 55,
-                    titleStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+              sections: data.map((d) {
+                double val = d['val'];
+                return PieChartSectionData(
+                  color: d['color'],
+                  value: val,
+                  // CORRECTION DES MONTANTS : On remet le texte sur deux lignes
+                  title:
+                      '${formaterPrix(val)}\n(${(val / total * 100).toInt()}%)',
+                  radius: 55,
+                  titleStyle: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
-                if (boisson > 0)
-                  PieChartSectionData(
-                    color: Colors.blue,
-                    value: boisson,
-                    title: '${(boisson / total * 100).toInt()}%',
-                    radius: 55,
-                    titleStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                if (autre > 0)
-                  PieChartSectionData(
-                    color: Colors.grey,
-                    value: autre,
-                    title: '${(autre / total * 100).toInt()}%',
-                    radius: 55,
-                    titleStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-              ],
+                );
+              }).toList(),
             ),
           ),
         ),

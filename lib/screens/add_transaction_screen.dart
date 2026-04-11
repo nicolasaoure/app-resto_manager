@@ -27,11 +27,13 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
   XFile? _photoRecu;
   final ImagePicker _picker = ImagePicker();
 
+  // --- MISE À JOUR : Ajout des catégories Nourriture pour les achats ---
   final List<String> _categories = [
     'RECETTE_NOURRITURE',
     'RECETTE_BOISSON',
     'RECETTE_DIVERS',
     'ENTREE_FINANCIERE',
+    'PROVISION_NOURRITURE', // <-- NOUVEAU
     'ACHAT_MARCHANDISE',
     'ACHAT_BOISSON',
     'ACHAT_SERVICE',
