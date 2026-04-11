@@ -16,28 +16,99 @@ class EcranTableauDeBord extends StatefulWidget {
 class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   DateTime _moisAffiche = DateTime.now();
 
+  // --- NOUVEAU : Fonction pour afficher les détails dans un volet ---
+  void _afficherDetails(String titre, List<dynamic> transactionsFiltrees) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Text(
+                titre,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: transactionsFiltrees.isEmpty
+                  ? const Center(child: Text("Aucune transaction trouvée."))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: transactionsFiltrees.length,
+                      separatorBuilder: (context, index) => const Divider(),
+                      itemBuilder: (context, index) {
+                        final tx = transactionsFiltrees[index];
+                        final double montant = (tx['amount'] ?? 0).toDouble();
+                        final String dateStr = tx['createdAt'] != null
+                            ? DateFormat(
+                                'dd/MM à HH:mm',
+                              ).format(DateTime.parse(tx['createdAt']))
+                            : '--/--';
+
+                        return ListTile(
+                          title: Text(
+                            tx['description'] ?? 'Sans description',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text("$dateStr • ${tx['category']}"),
+                          trailing: Text(
+                            "${formaterPrix(montant)} F",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: tx['type'] == 'ENTREE'
+                                  ? Colors.green
+                                  : Colors.red,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLogsSection() {
     return FutureBuilder<List<dynamic>>(
       future: fetchLogs(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting)
           return const SizedBox();
-        }
-
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Text(
-                "Aucune activité récente pour le moment.",
+                "Aucune activité récente.",
                 style: TextStyle(color: Colors.grey),
               ),
             ),
           );
         }
-
         final logs = snapshot.data!.take(5).toList();
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -45,19 +116,15 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Text(
                 "Flux d'activité récent",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  const BoxShadow(color: Colors.black12, blurRadius: 5),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black12, blurRadius: 5),
                 ],
               ),
               child: ListView.separated(
@@ -70,7 +137,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   DateTime dateLog = log['createdAt'] != null
                       ? DateTime.parse(log['createdAt'])
                       : DateTime.now();
-
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: _getLogColor(log['action']),
@@ -100,31 +166,18 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     );
   }
 
-  IconData _getLogIcon(String action) {
-    if (action.contains('Suppression') || action.contains('Delete')) {
-      return Icons.delete_forever;
-    }
-    if (action.contains('Connexion') || action.contains('Login')) {
-      return Icons.login;
-    }
-    if (action.contains('Vente')) return Icons.shopping_cart;
-    return Icons.info_outline;
-  }
-
-  Color _getLogColor(String action) {
-    if (action.contains('Suppression') || action.contains('Delete')) {
-      return Colors.red;
-    }
-    if (action.contains('Connexion') || action.contains('Login')) {
-      return Colors.blue;
-    }
-    if (action.contains('Vente')) return Colors.green;
-    return Colors.grey;
-  }
-
+  IconData _getLogIcon(String action) => action.contains('Suppression')
+      ? Icons.delete_forever
+      : action.contains('Connexion')
+      ? Icons.login
+      : Icons.shopping_cart;
+  Color _getLogColor(String action) => action.contains('Suppression')
+      ? Colors.red
+      : action.contains('Connexion')
+      ? Colors.blue
+      : Colors.green;
   String formaterPrix(double prix) =>
       NumberFormat('#,##0').format(prix).replaceAll(',', ' ');
-
   String _nomDuMois(int m) => [
     'janvier',
     'février',
@@ -153,48 +206,41 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
       body: FutureBuilder<List<dynamic>>(
         future: fetchTransactions(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
-          }
+          final allTransactions = snapshot.data ?? [];
 
-          final transactions = snapshot.data ?? [];
+          // Filtrage initial pour le mois affiché
+          List<dynamic> txMois = allTransactions.where((tx) {
+            DateTime date = DateTime.parse(tx['createdAt']);
+            return date.month == _moisAffiche.month &&
+                date.year == _moisAffiche.year &&
+                (tx['amount'] ?? 0) > 0;
+          }).toList();
 
-          double recettesMois = 0, depensesMois = 0;
-          double depNourriture = 0, depBoisson = 0, depAutre = 0;
+          double totalEntrees = 0, totalSorties = 0;
           double recNourriture = 0, recBoisson = 0, recAutre = 0;
+          double depNourriture = 0, depBoisson = 0, depAutre = 0;
 
-          for (var tx in transactions) {
+          for (var tx in txMois) {
             double montant = (tx['amount'] ?? 0).toDouble();
-
-            if (montant == 0) continue;
-
-            DateTime date = tx['createdAt'] != null
-                ? DateTime.parse(tx['createdAt'])
-                : DateTime.now();
-
-            if (date.month == _moisAffiche.month &&
-                date.year == _moisAffiche.year) {
-              String cat = tx['category'] ?? '';
-
-              if (tx['type'] == 'ENTREE' || cat.startsWith('RECETTE')) {
-                recettesMois += montant;
-                if (cat.contains('NOURRITURE')) {
-                  recNourriture += montant;
-                } else if (cat.contains('BOISSON')) {
-                  recBoisson += montant;
-                } else {
-                  recAutre += montant;
-                }
-              } else {
-                depensesMois += montant;
-                if (cat.contains('NOURRITURE')) {
-                  depNourriture += montant;
-                } else if (cat.contains('BOISSON')) {
-                  depBoisson += montant;
-                } else {
-                  depAutre += montant;
-                }
-              }
+            String cat = (tx['category'] ?? '').toString();
+            if (tx['type'] == 'ENTREE') {
+              totalEntrees += montant;
+              if (cat.contains('NOURRITURE'))
+                recNourriture += montant;
+              else if (cat.contains('BOISSON'))
+                recBoisson += montant;
+              else
+                recAutre += montant;
+            } else {
+              totalSorties += montant;
+              if (cat.contains('NOURRITURE'))
+                depNourriture += montant;
+              else if (cat.contains('BOISSON'))
+                depBoisson += montant;
+              else
+                depAutre += montant;
             }
           }
 
@@ -204,82 +250,111 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
               children: [
                 _buildMonthSelector(),
                 const SizedBox(height: 20),
-
                 Row(
                   children: [
                     _buildSummaryCard(
                       "ENTRÉES",
-                      recettesMois,
+                      totalEntrees,
                       Colors.green,
                       Icons.arrow_downward,
+                      () {
+                        _afficherDetails(
+                          "Détail des Entrées",
+                          txMois.where((t) => t['type'] == 'ENTREE').toList(),
+                        );
+                      },
                     ),
                     const SizedBox(width: 10),
                     _buildSummaryCard(
                       "SORTIES",
-                      depensesMois,
+                      totalSorties,
                       Colors.red,
                       Icons.arrow_upward,
+                      () {
+                        _afficherDetails(
+                          "Détail des Sorties",
+                          txMois.where((t) => t['type'] == 'SORTIE').toList(),
+                        );
+                      },
                     ),
                     const SizedBox(width: 10),
                     _buildSummaryCard(
                       "BÉNÉFICE",
-                      recettesMois - depensesMois,
+                      totalEntrees - totalSorties,
                       Colors.blue,
                       Icons.account_balance_wallet,
+                      null,
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 30),
-
-                // --- NOUVEAU : GRAPHIQUE DES RECETTES ---
                 const Text(
                   "Répartition des recettes (Entrées)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
-                recettesMois > 0
+                totalEntrees > 0
                     ? _buildPieChart(
-                        recettesMois,
+                        totalEntrees,
                         recNourriture,
                         recBoisson,
                         recAutre,
+                        (cat) {
+                          _afficherDetails(
+                            "Ventes : $cat",
+                            txMois
+                                .where(
+                                  (t) =>
+                                      t['type'] == 'ENTREE' &&
+                                      t['category'].toString().contains(
+                                        cat.toUpperCase(),
+                                      ),
+                                )
+                                .toList(),
+                          );
+                        },
                       )
-                    : const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Text("Aucune donnée de recette."),
-                        ),
+                    : const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text("Aucune recette"),
                       ),
-
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 20),
-
-                // --- GRAPHIQUE DES CHARGES EXISTANT ---
                 const Text(
                   "Répartition des charges (Sorties)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
-                depensesMois > 0
+                totalSorties > 0
                     ? _buildPieChart(
-                        depensesMois,
+                        totalSorties,
                         depNourriture,
                         depBoisson,
                         depAutre,
+                        (cat) {
+                          _afficherDetails(
+                            "Dépenses : $cat",
+                            txMois
+                                .where(
+                                  (t) =>
+                                      t['type'] == 'SORTIE' &&
+                                      t['category'].toString().contains(
+                                        cat.toUpperCase(),
+                                      ),
+                                )
+                                .toList(),
+                          );
+                        },
                       )
-                    : const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Text("Aucune donnée de dépense."),
-                        ),
+                    : const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text("Aucune dépense"),
                       ),
-
                 const SizedBox(height: 30),
                 _buildExportButton(
-                  recettesMois,
-                  depensesMois,
+                  totalEntrees,
+                  totalSorties,
                   depNourriture,
                   depBoisson,
                   depAutre,
@@ -338,67 +413,92 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     double amount,
     Color color,
     IconData icon,
+    VoidCallback? onTap,
   ) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
+      child: InkWell(
+        // Ajout de l'effet de clic
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
                   ),
+                  Icon(icon, color: color, size: 14),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                formaterPrix(amount),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
                 ),
-                Icon(icon, color: color, size: 14),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              "${formaterPrix(amount)}",
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // --- GRAPHIQUE MIS À JOUR : Montants + Pourcentages + Légende ---
   Widget _buildPieChart(
     double total,
     double nourriture,
     double boisson,
     double autre,
+    Function(String) onSegmentTap,
   ) {
     return Column(
       children: [
         SizedBox(
-          height: 180, // Agrandissement pour laisser respirer le texte
+          height: 180,
           child: PieChart(
             PieChartData(
               sectionsSpace: 2,
               centerSpaceRadius: 35,
+              pieTouchData: PieTouchData(
+                // --- GESTION DU CLIC SUR LE GRAPHIQUE ---
+                touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                  if (!event.isInterestedForInteractions ||
+                      pieTouchResponse == null ||
+                      pieTouchResponse.touchedSection == null)
+                    return;
+                  final index =
+                      pieTouchResponse.touchedSection!.touchedSectionIndex;
+                  if (index == 0)
+                    onSegmentTap('Nourriture');
+                  else if (index == 1)
+                    onSegmentTap('Boisson');
+                  else if (index == 2)
+                    onSegmentTap('Autre');
+                },
+              ),
               sections: [
                 if (nourriture > 0)
                   PieChartSectionData(
                     color: Colors.brown,
                     value: nourriture,
-                    title:
-                        '${formaterPrix(nourriture)}\n(${(nourriture / total * 100).toInt()}%)',
-                    radius: 55, // Plus large pour le texte sur deux lignes
+                    title: '${(nourriture / total * 100).toInt()}%',
+                    radius: 55,
                     titleStyle: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -407,11 +507,10 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   PieChartSectionData(
                     color: Colors.blue,
                     value: boisson,
-                    title:
-                        '${formaterPrix(boisson)}\n(${(boisson / total * 100).toInt()}%)',
+                    title: '${(boisson / total * 100).toInt()}%',
                     radius: 55,
                     titleStyle: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -420,11 +519,10 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   PieChartSectionData(
                     color: Colors.grey,
                     value: autre,
-                    title:
-                        '${formaterPrix(autre)}\n(${(autre / total * 100).toInt()}%)',
+                    title: '${(autre / total * 100).toInt()}%',
                     radius: 55,
                     titleStyle: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -466,14 +564,14 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   }
 
   Widget _buildExportButton(
-    double recettes,
-    double depenses,
-    double depNourriture,
-    double depBoisson,
-    double depAutre,
-    double recNourriture,
-    double recBoisson,
-    double recAutre,
+    double rec,
+    double dep,
+    double dn,
+    double db,
+    double da,
+    double rn,
+    double rb,
+    double ra,
   ) {
     return ElevatedButton.icon(
       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
@@ -487,27 +585,25 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
         minimumSize: const Size(double.infinity, 50),
       ),
       onPressed: () {
-        final documentFuture = genererRapportFinancier(
+        final doc = genererRapportFinancier(
           moisAnnee: "${_nomDuMois(_moisAffiche.month)} ${_moisAffiche.year}"
               .toUpperCase(),
-          entrees: recettes,
-          sorties: depenses,
-          benefice: recettes - depenses,
-          depensesNourriture: depNourriture,
-          depensesBoissons: depBoisson,
-          depensesAutres: depAutre,
-          recettesNourriture: recNourriture,
-          recettesBoissons: recBoisson,
-          recettesAutres: recAutre,
+          entrees: rec,
+          sorties: dep,
+          benefice: rec - dep,
+          depensesNourriture: dn,
+          depensesBoissons: db,
+          depensesAutres: da,
+          recettesNourriture: rn,
+          recettesBoissons: rb,
+          recettesAutres: ra,
         );
-
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => EcranApercuPdf(
-              titreDocument:
-                  'Akwaba_Rapport_${_moisAffiche.month}_${_moisAffiche.year}.pdf',
-              pdfFuture: documentFuture,
+              titreDocument: 'Rapport_${_moisAffiche.month}.pdf',
+              pdfFuture: doc,
             ),
           ),
         );
@@ -519,12 +615,11 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
 class EcranApercuPdf extends StatelessWidget {
   final String titreDocument;
   final Future<Uint8List> pdfFuture;
-
   const EcranApercuPdf({
-    Key? key,
+    super.key,
     required this.titreDocument,
     required this.pdfFuture,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
