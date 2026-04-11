@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // <-- NOUVEAU
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
-import '../main.dart'; // Permet d'accéder à l'EcranTransactions pour la redirection
+import '../main.dart';
 
 class EcranConnexion extends StatefulWidget {
   const EcranConnexion({super.key});
@@ -14,7 +14,7 @@ class _EcranConnexionState extends State<EcranConnexion> {
   final TextEditingController _nomController = TextEditingController();
   final TextEditingController _motDePasseController = TextEditingController();
 
-  bool _enChargement = false; // Pour afficher une petite roue de chargement
+  bool _enChargement = false;
 
   Future<void> _tenterConnexion() async {
     final nom = _nomController.text.trim();
@@ -32,16 +32,13 @@ class _EcranConnexionState extends State<EcranConnexion> {
     });
 
     try {
-      // On appelle notre API NestJS (qui renvoie désormais le rôle)
       final resultat = await login(nom, motDePasse);
 
       if (mounted) {
-        // --- NOUVEAU : Sauvegarde de la session (Top Chrono 8h) ---
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userId', resultat['userId'].toString());
         await prefs.setString('role', resultat['role']);
         await prefs.setString('login_time', DateTime.now().toIso8601String());
-        // --------------------------------------------------------
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -50,9 +47,7 @@ class _EcranConnexionState extends State<EcranConnexion> {
           ),
         );
 
-        // --- NOUVEAU : Aiguillage Intelligent (Corrigé) ---
         if (resultat['role'] == 'ADMIN') {
-          // L'Admin va vers le Menu Principal (qui s'ouvrira sur l'onglet 1 : Stats)
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -60,13 +55,11 @@ class _EcranConnexionState extends State<EcranConnexion> {
             ),
           );
         } else {
-          // Le serveur standard va vers la caisse (Transactions)
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const EcranTransactions()),
           );
         }
-        // ----------------------------------------
       }
     } catch (e) {
       if (mounted) {
@@ -95,8 +88,38 @@ class _EcranConnexionState extends State<EcranConnexion> {
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              Icon(Icons.storefront, size: 80, color: Colors.orange[800]),
-              const SizedBox(height: 10),
+              // --- NOUVEAU : REMPLACEMENT DE L'ICÔNE PAR TON LOGO ---
+              Container(
+                height: 120,
+                width: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/logo_akwaba.png',
+                    fit: BoxFit.cover,
+                    // Si l'image n'est pas encore là, on affiche un indicateur
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.storefront,
+                        size: 60,
+                        color: Colors.orange[800],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              // -----------------------------------------------------
+              const SizedBox(height: 15),
               Text(
                 'Akwaba Resto',
                 style: TextStyle(
@@ -147,7 +170,6 @@ class _EcranConnexionState extends State<EcranConnexion> {
                       ),
                       const SizedBox(height: 30),
 
-                      // Le bouton change si on est en train de charger
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange[800],

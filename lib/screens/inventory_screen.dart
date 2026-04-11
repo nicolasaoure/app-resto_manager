@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:app_resto_manager/services/api_service.dart';
 
 class EcranInventaire extends StatefulWidget {
   const EcranInventaire({Key? key}) : super(key: key);
@@ -11,12 +12,17 @@ class EcranInventaire extends StatefulWidget {
 
 class _EcranInventaireState extends State<EcranInventaire> {
   Future<List<dynamic>> fetchStock() async {
-    // On appelle la route GET de ton serveur NestJS
-    final response = await http.get(Uri.parse('http://localhost:3000/stock'));
-    if (response.statusCode == 200) {
-      return json.decode(response.body);
-    } else {
-      throw Exception('Erreur de chargement du stock');
+    try {
+      final baseUrl = getApiBaseUrl();
+      final response = await http.get(Uri.parse('$baseUrl/stock'));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Erreur serveur (${response.statusCode})');
+      }
+    } catch (e) {
+      throw Exception('Impossible de joindre le stock : $e');
     }
   }
 
@@ -25,8 +31,7 @@ class _EcranInventaireState extends State<EcranInventaire> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Inventaire', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors
-            .teal, // Une couleur différente pour bien identifier l'inventaire
+        backgroundColor: Colors.teal,
       ),
       body: FutureBuilder<List<dynamic>>(
         future: fetchStock(),
@@ -38,9 +43,13 @@ class _EcranInventaireState extends State<EcranInventaire> {
           }
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                'Erreur: ${snapshot.error}',
-                style: const TextStyle(color: Colors.red),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Text(
+                  'Erreur: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
               ),
             );
           }
@@ -53,13 +62,18 @@ class _EcranInventaireState extends State<EcranInventaire> {
             );
           }
 
-          // --- LOGIQUE MÉTIER : REGROUPEMENT ---
-          // Si on enregistre 12 eaux lundi et 24 mardi, on veut afficher "36 eaux"
           final stocks = snapshot.data!;
           Map<String, Map<String, dynamic>> inventaireGroupe = {};
 
           for (var s in stocks) {
             String nom = s['nom'].toString().trim();
+            String cat = (s['categorie'] ?? 'AUTRE').toString().toUpperCase();
+            int qte = s['quantite'] as int;
+
+            // NOUVEAU : On cache tout ce qui a 0 en quantité (les plats) ou les catégories spécifiques
+            if (qte == 0 || cat.contains('PLAT') || cat.contains('MENU'))
+              continue;
+
             if (!inventaireGroupe.containsKey(nom)) {
               inventaireGroupe[nom] = {
                 'quantite': 0,
@@ -80,9 +94,7 @@ class _EcranInventaireState extends State<EcranInventaire> {
               final details = produit.value;
               final qte = details['quantite'];
 
-              // Seuil d'alerte pour le restaurant
               final bool stockFaible = qte < 10;
-
               bool isBoisson = details['categorie'].toString().contains(
                 'BOISSON',
               );
@@ -94,10 +106,6 @@ class _EcranInventaireState extends State<EcranInventaire> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
                   leading: CircleAvatar(
                     backgroundColor: isBoisson
                         ? Colors.blue[100]
@@ -109,10 +117,7 @@ class _EcranInventaireState extends State<EcranInventaire> {
                   ),
                   title: Text(
                     nom,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
                     details['categorie'].toString().replaceAll(
@@ -128,18 +133,13 @@ class _EcranInventaireState extends State<EcranInventaire> {
                         '$qte en stock',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
                           color: stockFaible ? Colors.red : Colors.green[700],
                         ),
                       ),
                       if (stockFaible)
                         const Text(
                           'Stock faible !',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: TextStyle(fontSize: 10, color: Colors.red),
                         ),
                     ],
                   ),

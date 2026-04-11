@@ -3,6 +3,8 @@ import 'package:fl_chart/fl_chart.dart';
 import '../services/api_service.dart';
 import 'package:intl/intl.dart';
 import '../services/pdf_service.dart';
+import 'dart:typed_data';
+import 'package:printing/printing.dart';
 
 class EcranTableauDeBord extends StatefulWidget {
   const EcranTableauDeBord({super.key});
@@ -13,15 +15,14 @@ class EcranTableauDeBord extends StatefulWidget {
 
 class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   DateTime _moisAffiche = DateTime.now();
-  bool _generationEnCours = false;
 
-  // --- LOGIQUE DES LOGS (Traçabilité) ---
   Widget _buildLogsSection() {
     return FutureBuilder<List<dynamic>>(
       future: fetchLogs(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox();
+        }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(
@@ -66,7 +67,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                 separatorBuilder: (context, index) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final log = logs[index];
-                  // CORRECTION ICI : Utilisation de 'log' au lieu de 'tx'
                   DateTime dateLog = log['createdAt'] != null
                       ? DateTime.parse(log['createdAt'])
                       : DateTime.now();
@@ -101,25 +101,30 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   }
 
   IconData _getLogIcon(String action) {
-    if (action.contains('Suppression') || action.contains('Delete'))
+    if (action.contains('Suppression') || action.contains('Delete')) {
       return Icons.delete_forever;
-    if (action.contains('Connexion') || action.contains('Login'))
+    }
+    if (action.contains('Connexion') || action.contains('Login')) {
       return Icons.login;
+    }
     if (action.contains('Vente')) return Icons.shopping_cart;
     return Icons.info_outline;
   }
 
   Color _getLogColor(String action) {
-    if (action.contains('Suppression') || action.contains('Delete'))
+    if (action.contains('Suppression') || action.contains('Delete')) {
       return Colors.red;
-    if (action.contains('Connexion') || action.contains('Login'))
+    }
+    if (action.contains('Connexion') || action.contains('Login')) {
       return Colors.blue;
+    }
     if (action.contains('Vente')) return Colors.green;
     return Colors.grey;
   }
 
   String formaterPrix(double prix) =>
       NumberFormat('#,##0').format(prix).replaceAll(',', ' ');
+
   String _nomDuMois(int m) => [
     'janvier',
     'février',
@@ -148,32 +153,47 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
       body: FutureBuilder<List<dynamic>>(
         future: fetchTransactions(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final transactions = snapshot.data ?? [];
+
           double recettesMois = 0, depensesMois = 0;
           double depNourriture = 0, depBoisson = 0, depAutre = 0;
+          double recNourriture = 0, recBoisson = 0, recAutre = 0;
 
           for (var tx in transactions) {
+            double montant = (tx['amount'] ?? 0).toDouble();
+
+            if (montant == 0) continue;
+
             DateTime date = tx['createdAt'] != null
                 ? DateTime.parse(tx['createdAt'])
                 : DateTime.now();
+
             if (date.month == _moisAffiche.month &&
                 date.year == _moisAffiche.year) {
-              double montant = (tx['amount'] ?? 0).toDouble();
               String cat = tx['category'] ?? '';
 
               if (tx['type'] == 'ENTREE' || cat.startsWith('RECETTE')) {
                 recettesMois += montant;
+                if (cat.contains('NOURRITURE')) {
+                  recNourriture += montant;
+                } else if (cat.contains('BOISSON')) {
+                  recBoisson += montant;
+                } else {
+                  recAutre += montant;
+                }
               } else {
                 depensesMois += montant;
-                if (cat.contains('NOURRITURE'))
+                if (cat.contains('NOURRITURE')) {
                   depNourriture += montant;
-                else if (cat.contains('BOISSON'))
+                } else if (cat.contains('BOISSON')) {
                   depBoisson += montant;
-                else
+                } else {
                   depAutre += montant;
+                }
               }
             }
           }
@@ -211,8 +231,34 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                 ),
 
                 const SizedBox(height: 30),
+
+                // --- NOUVEAU : GRAPHIQUE DES RECETTES ---
                 const Text(
-                  "Répartition des charges",
+                  "Répartition des recettes (Entrées)",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                recettesMois > 0
+                    ? _buildPieChart(
+                        recettesMois,
+                        recNourriture,
+                        recBoisson,
+                        recAutre,
+                      )
+                    : const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Text("Aucune donnée de recette."),
+                        ),
+                      ),
+
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 20),
+
+                // --- GRAPHIQUE DES CHARGES EXISTANT ---
+                const Text(
+                  "Répartition des charges (Sorties)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
@@ -225,7 +271,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                       )
                     : const Center(
                         child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 20),
+                          padding: EdgeInsets.symmetric(vertical: 10),
                           child: Text("Aucune donnée de dépense."),
                         ),
                       ),
@@ -237,6 +283,9 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   depNourriture,
                   depBoisson,
                   depAutre,
+                  recNourriture,
+                  recBoisson,
+                  recAutre,
                 ),
                 const SizedBox(height: 10),
                 _buildLogsSection(),
@@ -325,102 +374,177 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     );
   }
 
+  // --- GRAPHIQUE MIS À JOUR : Montants + Pourcentages + Légende ---
   Widget _buildPieChart(
     double total,
     double nourriture,
     double boisson,
     double autre,
   ) {
-    return SizedBox(
-      height: 150,
-      child: PieChart(
-        PieChartData(
-          sectionsSpace: 2,
-          centerSpaceRadius: 30,
-          sections: [
-            PieChartSectionData(
-              color: Colors.brown,
-              value: nourriture,
-              title: '${(nourriture / total * 100).toInt()}%',
-              radius: 40,
-              titleStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+    return Column(
+      children: [
+        SizedBox(
+          height: 180, // Agrandissement pour laisser respirer le texte
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 2,
+              centerSpaceRadius: 35,
+              sections: [
+                if (nourriture > 0)
+                  PieChartSectionData(
+                    color: Colors.brown,
+                    value: nourriture,
+                    title:
+                        '${formaterPrix(nourriture)}\n(${(nourriture / total * 100).toInt()}%)',
+                    radius: 55, // Plus large pour le texte sur deux lignes
+                    titleStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                if (boisson > 0)
+                  PieChartSectionData(
+                    color: Colors.blue,
+                    value: boisson,
+                    title:
+                        '${formaterPrix(boisson)}\n(${(boisson / total * 100).toInt()}%)',
+                    radius: 55,
+                    titleStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                if (autre > 0)
+                  PieChartSectionData(
+                    color: Colors.grey,
+                    value: autre,
+                    title:
+                        '${formaterPrix(autre)}\n(${(autre / total * 100).toInt()}%)',
+                    radius: 55,
+                    titleStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+              ],
             ),
-            PieChartSectionData(
-              color: Colors.blue,
-              value: boisson,
-              title: '${(boisson / total * 100).toInt()}%',
-              radius: 40,
-              titleStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            PieChartSectionData(
-              color: Colors.grey,
-              value: autre,
-              title: '${(autre / total * 100).toInt()}%',
-              radius: 40,
-              titleStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
+          ),
+        ),
+        const SizedBox(height: 15),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildLegendItem(Colors.brown, 'Nourriture'),
+            const SizedBox(width: 15),
+            _buildLegendItem(Colors.blue, 'Boissons'),
+            const SizedBox(width: 15),
+            _buildLegendItem(Colors.grey, 'Autre'),
           ],
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 
   Widget _buildExportButton(
     double recettes,
     double depenses,
-    double nourriture,
-    double boisson,
-    double autre,
+    double depNourriture,
+    double depBoisson,
+    double depAutre,
+    double recNourriture,
+    double recBoisson,
+    double recAutre,
   ) {
-    return _generationEnCours
-        ? const CircularProgressIndicator()
-        : ElevatedButton.icon(
-            icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-            label: Text(
-              "EXPORTER LE RAPPORT DU MOIS",
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+    return ElevatedButton.icon(
+      icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+      label: const Text(
+        "APERÇU DU RAPPORT",
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue[800],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        minimumSize: const Size(double.infinity, 50),
+      ),
+      onPressed: () {
+        final documentFuture = genererRapportFinancier(
+          moisAnnee: "${_nomDuMois(_moisAffiche.month)} ${_moisAffiche.year}"
+              .toUpperCase(),
+          entrees: recettes,
+          sorties: depenses,
+          benefice: recettes - depenses,
+          depensesNourriture: depNourriture,
+          depensesBoissons: depBoisson,
+          depensesAutres: depAutre,
+          recettesNourriture: recNourriture,
+          recettesBoissons: recBoisson,
+          recettesAutres: recAutre,
+        );
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EcranApercuPdf(
+              titreDocument:
+                  'Akwaba_Rapport_${_moisAffiche.month}_${_moisAffiche.year}.pdf',
+              pdfFuture: documentFuture,
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[800],
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              minimumSize: const Size(double.infinity, 50),
-            ),
-            onPressed: () async {
-              setState(() => _generationEnCours = true);
-              try {
-                // CORRECTION ICI : Paramètres renommés pour correspondre à ton service
-                await genererEtImprimerRapport(
-                  moisAnnee:
-                      "${_nomDuMois(_moisAffiche.month)} ${_moisAffiche.year}"
-                          .toUpperCase(),
-                  entrees: recettes,
-                  sorties: depenses,
-                  benefice: recettes - depenses,
-                  depensesNourriture: nourriture,
-                  depensesBoissons: boisson,
-                  depensesAutres: autre,
-                );
-              } finally {
-                setState(() => _generationEnCours = false);
-              }
-            },
-          );
+          ),
+        );
+      },
+    );
+  }
+}
+
+class EcranApercuPdf extends StatelessWidget {
+  final String titreDocument;
+  final Future<Uint8List> pdfFuture;
+
+  const EcranApercuPdf({
+    Key? key,
+    required this.titreDocument,
+    required this.pdfFuture,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Aperçu du Rapport',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.blue[800],
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: PdfPreview(
+        build: (format) => pdfFuture,
+        pdfFileName: titreDocument,
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        allowPrinting: true,
+        allowSharing: true,
+      ),
+    );
   }
 }

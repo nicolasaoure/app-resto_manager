@@ -29,11 +29,11 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/Logo_Akwaba.png"
+  image_path: "assets/images/logo_akwaba.png"
   adaptive_icon_background: "#FFFFFF"
 
 flutter:
   uses-material-design: true
   # N'oublie pas de déclarer ton dossier assets ici aussi !
   assets:
-    - assets/images/
+    - assets/images/logo_akwaba.png
