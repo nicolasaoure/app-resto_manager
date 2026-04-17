@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../main.dart';
+// N'oublie pas d'importer ton écran de transactions si ce n'est pas déjà géré par main.dart
+// import 'transactions_screen.dart';
 
 class EcranConnexion extends StatefulWidget {
   const EcranConnexion({super.key});
@@ -42,12 +44,14 @@ class _EcranConnexionState extends State<EcranConnexion> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(resultat['message']),
+            content: Text(resultat['message'] ?? 'Connexion réussie'),
             backgroundColor: Colors.green,
           ),
         );
 
-        if (resultat['role'] == 'ADMIN') {
+        // --- LA SÉPARATION DES CHEMINS EST ICI ---
+        if (resultat['role'] == 'ADMIN' || resultat['role'] == 'MANAGER') {
+          // Les chefs vont sur le Tableau de Bord
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -55,6 +59,7 @@ class _EcranConnexionState extends State<EcranConnexion> {
             ),
           );
         } else {
+          // Le CAISSIER va sur la liste des transactions
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const EcranTransactions()),
@@ -88,7 +93,6 @@ class _EcranConnexionState extends State<EcranConnexion> {
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              // --- NOUVEAU : REMPLACEMENT DE L'ICÔNE PAR TON LOGO ---
               Container(
                 height: 120,
                 width: 120,
@@ -107,7 +111,6 @@ class _EcranConnexionState extends State<EcranConnexion> {
                   child: Image.asset(
                     'assets/images/logo_akwaba.png',
                     fit: BoxFit.cover,
-                    // Si l'image n'est pas encore là, on affiche un indicateur
                     errorBuilder: (context, error, stackTrace) {
                       return Icon(
                         Icons.storefront,
@@ -118,7 +121,6 @@ class _EcranConnexionState extends State<EcranConnexion> {
                   ),
                 ),
               ),
-              // -----------------------------------------------------
               const SizedBox(height: 15),
               Text(
                 'Akwaba Resto',

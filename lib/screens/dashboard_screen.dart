@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../services/pdf_service.dart';
 import 'dart:typed_data';
 import 'package:printing/printing.dart';
+import 'caisse_screen.dart'; // <-- NOUVEL IMPORT POUR ACCÉDER À LA CAISSE
 
 class EcranTableauDeBord extends StatefulWidget {
   const EcranTableauDeBord({super.key});
@@ -15,12 +16,212 @@ class EcranTableauDeBord extends StatefulWidget {
 
 class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
   DateTime _moisAffiche = DateTime.now();
-
   bool _voletOuvert = false;
 
+  // --- Calcul exact de la semaine avec libellé ---
+  String _getSemaineLabel(DateTime date) {
+    int weekday = date.weekday;
+    DateTime monday = date.subtract(Duration(days: weekday - 1));
+    DateTime sunday = date.add(Duration(days: 7 - weekday));
+
+    int dayOfYear = int.parse(DateFormat('D').format(date));
+    int weekNum = ((dayOfYear - weekday + 10) / 7).floor();
+
+    const jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    String format(DateTime d) {
+      String nomJour = jours[d.weekday - 1];
+      String dateStr = DateFormat('dd.MM.yy').format(d);
+      return "$nomJour $dateStr";
+    }
+
+    return "Semaine $weekNum (${format(monday)} au ${format(sunday)})";
+  }
+
+  // --- NOUVEAU : Le menu d'actions (Modification / Suppression) ---
+  void _afficherMenuAction(dynamic tx) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text("Modifier la transaction"),
+                onTap: () {
+                  Navigator.pop(context);
+                  // TODO: Ouvrir ton écran ou ta popup de modification ici
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Fonction de modification à relier'),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text(
+                  "Supprimer la transaction",
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  // TODO: Appeler ta fonction supprimerTransaction(tx['id']) ici puis setState
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Fonction de suppression à relier'),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- MISE À JOUR : Affichage des détails avec Totaux par semaine ---
   void _afficherDetails(String titre, List<dynamic> transactionsFiltrees) {
     if (_voletOuvert) return;
     _voletOuvert = true;
+
+    // 1. Tri (plus récent au plus ancien)
+    transactionsFiltrees.sort((a, b) {
+      DateTime dateA = a['createdAt'] != null
+          ? DateTime.parse(a['createdAt'])
+          : DateTime.now();
+      DateTime dateB = b['createdAt'] != null
+          ? DateTime.parse(b['createdAt'])
+          : DateTime.now();
+      return dateB.compareTo(dateA);
+    });
+
+    // 2. Regroupement par semaine
+    Map<String, List<dynamic>> groupesParSemaine = {};
+    for (var tx in transactionsFiltrees) {
+      DateTime dateTx = tx['createdAt'] != null
+          ? DateTime.parse(tx['createdAt'])
+          : DateTime.now();
+      String labelSemaine = _getSemaineLabel(dateTx);
+
+      if (!groupesParSemaine.containsKey(labelSemaine)) {
+        groupesParSemaine[labelSemaine] = [];
+      }
+      groupesParSemaine[labelSemaine]!.add(tx);
+    }
+
+    // 3. Construction des widgets
+    List<Widget> listeAffichage = [];
+    const jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+    groupesParSemaine.forEach((semaineLabel, txs) {
+      // Calcul du total pour cette semaine spécifique
+      double totalSemaine = txs.fold(
+        0,
+        (sum, item) => sum + (item['amount'] ?? 0).toDouble(),
+      );
+
+      // En-tête de semaine avec le montant global à droite
+      listeAffichage.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          color: Colors.orange[50],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  semaineLabel,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange[900],
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Text(
+                "${formaterPrix(totalSemaine)} F",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange[800],
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Transactions de la semaine
+      for (var tx in txs) {
+        final double montant = (tx['amount'] ?? 0).toDouble();
+        DateTime dateTx = tx['createdAt'] != null
+            ? DateTime.parse(tx['createdAt'])
+            : DateTime.now();
+        String nomJour = jours[dateTx.weekday - 1];
+        String dateComplete =
+            "$nomJour ${DateFormat('dd.MM.yy').format(dateTx)} à ${DateFormat('HH:mm').format(dateTx)}";
+        bool isEntree =
+            tx['type'] == 'ENTREE' ||
+            (tx['category'] ?? '').toString().startsWith('RECETTE');
+
+        listeAffichage.add(
+          ListTile(
+            title: Text(
+              tx['description'] ?? 'Sans description',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text("$dateComplete • ${tx['category']}"),
+            trailing: Text(
+              "${formaterPrix(montant)} F",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isEntree ? Colors.green[700] : Colors.red[700],
+              ),
+            ),
+
+            // --- LA SÉCURITÉ FLUTTER EST ICI (On gère le clic long) ---
+            onLongPress: () {
+              if (utilisateurConnecteRole == 'ADMIN' ||
+                  utilisateurConnecteRole == 'MANAGER') {
+                // Si c'est un chef, on ouvre le menu
+                _afficherMenuAction(tx);
+              } else {
+                // Si c'est un caissier, on bloque et on le prévient
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Accès refusé : Vous n\'avez pas les droits pour modifier ou supprimer.',
+                    ),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+
+            // ---------------------------------------------------------
+          ),
+        );
+        listeAffichage.add(const Divider(height: 1));
+      }
+    });
 
     showModalBottomSheet(
       context: context,
@@ -57,50 +258,18 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
             Expanded(
               child: transactionsFiltrees.isEmpty
                   ? const Center(child: Text("Aucune transaction trouvée."))
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: transactionsFiltrees.length,
-                      separatorBuilder: (context, index) => const Divider(),
-                      itemBuilder: (context, index) {
-                        final tx = transactionsFiltrees[index];
-                        final double montant = (tx['amount'] ?? 0).toDouble();
-                        final String dateStr = tx['createdAt'] != null
-                            ? DateFormat(
-                                'dd/MM à HH:mm',
-                              ).format(DateTime.parse(tx['createdAt']))
-                            : '--/--';
-
-                        return ListTile(
-                          title: Text(
-                            tx['description'] ?? 'Sans description',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: Text("$dateStr • ${tx['category']}"),
-                          trailing: Text(
-                            "${formaterPrix(montant)} F",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color:
-                                  (tx['type'] == 'ENTREE' ||
-                                      (tx['category'] ?? '')
-                                          .toString()
-                                          .startsWith('RECETTE'))
-                                  ? Colors.green[700]
-                                  : Colors.red[700],
-                            ),
-                          ),
-                        );
-                      },
+                  : ListView(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      children: listeAffichage,
                     ),
             ),
           ],
         ),
       ),
-    ).whenComplete(() {
-      _voletOuvert = false;
-    });
+    ).whenComplete(() => _voletOuvert = false);
   }
 
+  // --- Widgets de logs et utilitaires ---
   Widget _buildLogsSection() {
     return FutureBuilder<List<dynamic>>(
       future: fetchLogs(),
@@ -212,6 +381,19 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
           style: TextStyle(color: Colors.white),
         ),
         backgroundColor: Colors.orange[800],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_shopping_cart, color: Colors.white),
+            tooltip: 'Ouvrir la Caisse',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const EcranCaisse()),
+              );
+            },
+          ),
+          const SizedBox(width: 10),
+        ],
       ),
       body: FutureBuilder<List<dynamic>>(
         future: fetchTransactions(),
@@ -220,7 +402,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
             return const Center(child: CircularProgressIndicator());
           final allTransactions = snapshot.data ?? [];
 
-          // --- NOUVEAU : Calcul de l'historique progressif ---
           List<double> histRecettes = [];
           List<double> histDepenses = [];
 
@@ -246,7 +427,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
             histDepenses.add(mDep);
           }
 
-          // Données du mois courant pour l'affichage classique
           List<dynamic> txMois = allTransactions.where((tx) {
             DateTime date = tx['createdAt'] != null
                 ? DateTime.parse(tx['createdAt'])
@@ -264,7 +444,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
             double montant = (tx['amount'] ?? 0).toDouble();
             String cat = (tx['category'] ?? '').toString().toUpperCase();
             bool isEntree = tx['type'] == 'ENTREE' || cat.startsWith('RECETTE');
-
             if (isEntree) {
               totalEntrees += montant;
               if (cat.contains('NOURRITURE'))
@@ -340,8 +519,6 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   ],
                 ),
                 const SizedBox(height: 30),
-
-                // --- GRAPHIQUE DES RECETTES ---
                 const Text(
                   "Répartition des recettes (Entrées)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -374,12 +551,9 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                         padding: EdgeInsets.all(20),
                         child: Text("Aucune recette"),
                       ),
-
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 20),
-
-                // --- GRAPHIQUE DES SORTIES ---
                 const Text(
                   "Répartition des charges (Sorties)",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -412,9 +586,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                         padding: EdgeInsets.all(20),
                         child: Text("Aucune dépense"),
                       ),
-
                 const SizedBox(height: 30),
-                // Appel du bouton export avec les historiques
                 _buildExportButton(
                   totalEntrees,
                   totalSorties,
@@ -425,7 +597,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
                   recBoisson,
                   recAutre,
                   histRecettes,
-                  histDepenses, // NOUVEAUX PARAMÈTRES
+                  histDepenses,
                 ),
                 const SizedBox(height: 10),
                 _buildLogsSection(),
@@ -621,7 +793,7 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
     double rb,
     double ra,
     List<double> histRecettes,
-    List<double> histDepenses, // Réception des listes
+    List<double> histDepenses,
   ) {
     return ElevatedButton.icon(
       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
@@ -647,8 +819,8 @@ class _EcranTableauDeBordState extends State<EcranTableauDeBord> {
           recettesNourriture: rn,
           recettesBoissons: rb,
           recettesAutres: ra,
-          historiqueRecettes: histRecettes, // <-- Envoi au PDF
-          historiqueDepenses: histDepenses, // <-- Envoi au PDF
+          historiqueRecettes: histRecettes,
+          historiqueDepenses: histDepenses,
         );
         Navigator.push(
           context,

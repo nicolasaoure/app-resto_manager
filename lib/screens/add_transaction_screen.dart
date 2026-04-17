@@ -27,13 +27,12 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
   XFile? _photoRecu;
   final ImagePicker _picker = ImagePicker();
 
-  // --- MISE À JOUR : Ajout des catégories Nourriture pour les achats ---
   final List<String> _categories = [
     'RECETTE_NOURRITURE',
     'RECETTE_BOISSON',
     'RECETTE_DIVERS',
     'ENTREE_FINANCIERE',
-    'PROVISION_NOURRITURE', // <-- NOUVEAU
+    'PROVISION_NOURRITURE',
     'ACHAT_MARCHANDISE',
     'ACHAT_BOISSON',
     'ACHAT_SERVICE',
@@ -93,10 +92,11 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
     }
   }
 
-  Future<void> _prendrePhoto() async {
+  // --- NOUVEAU : Fonction universelle pour l'image ---
+  Future<void> _selectionnerImage(ImageSource source) async {
     final XFile? photo = await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 70,
+      source: source,
+      imageQuality: 70, // Compresse un peu pour économiser le serveur
     );
 
     if (photo != null) {
@@ -104,6 +104,47 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
         _photoRecu = photo;
       });
     }
+  }
+
+  // --- NOUVEAU : Popup pour choisir Galerie ou Appareil ---
+  void _afficherChoixSource() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'Source de la photo',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.blue),
+                title: const Text('Choisir depuis la Galerie'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectionnerImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.orange),
+                title: const Text('Prendre une Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectionnerImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _enregistrerTransaction() async {
@@ -170,9 +211,38 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
     }
   }
 
+  // --- NOUVEAU : Widget réutilisable pour afficher le bouton d'appareil photo ---
+  Widget _buildPlaceholderPhoto(bool modeEdition) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.camera_alt, size: 50, color: Colors.grey[600]),
+        const SizedBox(height: 10),
+        Text(
+          modeEdition
+              ? 'Appuyez pour remplacer le reçu'
+              : 'Appuyez pour ajouter le reçu',
+          style: TextStyle(
+            color: Colors.orange[900],
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool modeEdition = widget.transactionAEditer != null;
+
+    // --- NOUVEAU : Calcul de l'URL existante si on modifie ---
+    String? urlImageExistante;
+    if (modeEdition && widget.transactionAEditer['imageUrl'] != null) {
+      String baseUrl = getApiBaseUrl();
+      if (baseUrl.endsWith('/'))
+        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+      urlImageExistante = '$baseUrl${widget.transactionAEditer['imageUrl']}';
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -270,8 +340,9 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
               ),
               const SizedBox(height: 30),
 
+              // --- ZONE IMAGE ENTIEREMENT REVUE ---
               InkWell(
-                onTap: _prendrePhoto,
+                onTap: _afficherChoixSource,
                 child: Container(
                   width: double.infinity,
                   height: 180,
@@ -283,6 +354,7 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: _photoRecu != null
+                        // 1. Si on vient de choisir une NOUVELLE photo
                         ? Stack(
                             fit: StackFit.expand,
                             children: [
@@ -308,32 +380,45 @@ class _EcranAjoutTransactionState extends State<EcranAjoutTransaction> {
                                       Icons.edit,
                                       color: Colors.white,
                                     ),
-                                    onPressed: _prendrePhoto,
+                                    onPressed: _afficherChoixSource,
                                   ),
                                 ),
                               ),
                             ],
                           )
-                        : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        // 2. Si on n'a rien choisi, mais qu'une image EXISTE sur le serveur (Mode édition)
+                        : (urlImageExistante != null &&
+                              urlImageExistante.isNotEmpty)
+                        ? Stack(
+                            fit: StackFit.expand,
                             children: [
-                              Icon(
-                                Icons.camera_alt,
-                                size: 50,
-                                color: Colors.grey[600],
+                              Image.network(
+                                urlImageExistante,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _buildPlaceholderPhoto(modeEdition),
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                modeEdition
-                                    ? 'Appuyez pour remplacer le reçu'
-                                    : 'Appuyez pour photographier le reçu',
-                                style: TextStyle(
-                                  color: Colors.orange[900],
-                                  fontWeight: FontWeight.bold,
+                              Align(
+                                alignment: Alignment.bottomRight,
+                                child: Container(
+                                  margin: const EdgeInsets.all(8),
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.black54,
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed: _afficherChoixSource,
+                                  ),
                                 ),
                               ),
                             ],
-                          ),
+                          )
+                        // 3. Aucune image existante, on affiche l'icône appareil photo
+                        : _buildPlaceholderPhoto(modeEdition),
                   ),
                 ),
               ),

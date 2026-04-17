@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http; // Notre fameux "téléphone"
 import 'package:image_picker/image_picker.dart';
 
 String? utilisateurConnecteId; // Va stocker ton UUID
+String? utilisateurConnecteRole; // <--- C'EST CETTE LIGNE QUI MANQUAIT !
 
 String getApiBaseUrl() {
   // FINI LE LOCAL ! On pointe maintenant vers le serveur de production sur Render
@@ -68,13 +69,14 @@ Future<Map<String, dynamic>> login(String username, String password) async {
   }
 }
 
-// NOUVEAU : On ajoute le paramètre optionnel {XFile? photo}
+// NOUVEAU : On ajoute le paramètre optionnel {XFile? photo, List<Map<String, dynamic>>? panier}
 Future<void> creerTransaction(
   double montant,
   String description,
   String categorie,
   String dateIso, {
   XFile? photo,
+  List<Map<String, dynamic>>? panier, // <-- NOUVEAU PARAMÈTRE ICI
 }) async {
   if (utilisateurConnecteId == null) {
     throw Exception("Erreur : Aucun utilisateur connecté !");
@@ -92,6 +94,13 @@ Future<void> creerTransaction(
   request.fields['category'] = categorie;
   request.fields['userId'] = utilisateurConnecteId!;
   request.fields['createdAt'] = dateIso;
+
+  // --- NOUVEAU : On attache le panier s'il y en a un ---
+  if (panier != null && panier.isNotEmpty) {
+    request.fields['lignesVente'] = jsonEncode(
+      panier,
+    ); // Transformation en texte pour le Multipart
+  }
 
   // 2. L'INTELLIGENCE CROSS-PLATFORM : Si on a pris une photo, on l'ajoute en pièce jointe !
   if (photo != null) {

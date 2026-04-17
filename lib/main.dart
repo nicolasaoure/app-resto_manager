@@ -8,6 +8,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/add_stock_screen.dart';
 import 'screens/inventory_screen.dart';
 import 'screens/sell_item_screen.dart';
+import 'screens/caisse_screen.dart'; // <-- NOUVEL IMPORT DE LA CAISSE
 import 'package:intl/intl.dart';
 
 String formaterPrix(dynamic prix) {
@@ -100,8 +101,6 @@ class _MenuPrincipalState extends State<MenuPrincipal> {
     const EcranTableauDeBord(), // Index 1 : Stats
     const EcranInventaire(),
   ];
-
-  // ... (LE RESTE DE TON CODE RESTE EXACTEMENT IDENTIQUE À PARTIR D'ICI) ...
 
   @override
   Widget build(BuildContext context) {
@@ -373,6 +372,16 @@ class _EcranTransactionsState extends State<EcranTransactions> {
         backgroundColor: Colors.orange[800],
         actions: [
           IconButton(
+            icon: const Icon(Icons.point_of_sale, color: Colors.white),
+            tooltip: 'Ouvrir la Caisse',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const EcranCaisse()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Se déconnecter',
             onPressed: () async {
@@ -622,7 +631,7 @@ class _EcranTransactionsState extends State<EcranTransactions> {
                         },
                       ),
                       const Divider(),
-                      // OPTION 2 : VENDRE (NOUVEAU)
+                      // OPTION 2 : VENDRE
                       ListTile(
                         leading: CircleAvatar(
                           backgroundColor: Colors.orange[100],
